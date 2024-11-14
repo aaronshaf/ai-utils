@@ -22,7 +22,7 @@ EXTENSIONS=("md" "json" "ts" "tsx" "js" "jsx")
 
 # Function to check if a file has one of the desired extensions
 has_valid_extension() {
-    local file="$1"
+    local file="${1:t}"  # Use only the basename of the file
     for ext in "${EXTENSIONS[@]}"; do
         if [[ "$file" == *.$ext ]]; then
             return 0
@@ -34,16 +34,10 @@ has_valid_extension() {
 # Initialize an empty array to hold file paths
 file_list=()
 
-# Function to collect files respecting .gitignore if inside a git repository
+# Function to collect files using git
 collect_files_git() {
-    # Collect tracked files
-    local tracked
-    tracked=$(git ls-files "$@")
-    # Collect untracked but not ignored files
-    local untracked
-    untracked=$(git ls-files --others --exclude-standard "$@")
-    # Combine both lists
-    file_list+=("${(f)tracked}" "${(f)untracked}")
+    file_list=("${(f)$(git ls-files "$@" && git ls-files --others --exclude-standard "$@" 2>/dev/null)}")
+    file_list+=("${@}") # Add explicitly passed arguments
 }
 
 # Function to collect files using find, excluding node_modules and hidden directories
@@ -57,15 +51,11 @@ collect_files_find() {
                 -type f -print 2>/dev/null)
             file_list+=("${(f)files}")
         elif [[ -f "$arg" ]]; then
+            # Directly add files that exist
             file_list+=("$arg")
-        else
-            echo "Warning: '$arg' is not a valid file or directory." >&2
         fi
     done
 }
-
-# Expand glob patterns in arguments before processing
-set -- $(print -l -- "$@")
 
 # Determine if we're inside a git repository
 if git rev-parse --is-inside-work-tree &>/dev/null; then
@@ -87,32 +77,41 @@ filtered_files=($(printf "%s\n" "${filtered_files[@]}" | awk '!seen[$0]++'))
 
 # Prepare the aggregated output
 output=""
+summary="\nSummary of included files:\n"
 for file in "${filtered_files[@]}"; do
     # Ensure the file exists and is a regular file
     if [[ -f "$file" ]]; then
-        # Check if the file is textual
-        if file "$file" | grep -qiE 'text|source'; then
+        # Check if the file is textual or JSON
+        if file "$file" | grep -qiE 'text|source|json'; then
             # Append file path and its content to the output
             output+="### File: $file\n"
-            output+="----------------------------------------\n"
+            output+="---\n"
             # Escape any backslashes and backticks to prevent markdown issues
             content=$(sed 's/\\/\\\\/g; s/`/\\`/g' "$file")
             output+="$content\n\n"
+            # Add to the summary
+            summary+="$file\n"
         fi
     fi
 done
+
+# Append the summary of included files to the output
+output+="$summary"
 
 # Copy the output to the clipboard
 # Use pbcopy for macOS, xclip or xsel for Linux
 if command -v pbcopy &>/dev/null; then
     echo -e "$output" | pbcopy
     echo "✅ Copied ${#filtered_files[@]} files to clipboard using pbcopy."
+    echo -e "Included files:\n${filtered_files[@]}"
 elif command -v xclip &>/dev/null; then
     echo -e "$output" | xclip -selection clipboard
     echo "✅ Copied ${#filtered_files[@]} files to clipboard using xclip."
+    echo -e "Included files:\n${filtered_files[@]}"
 elif command -v xsel &>/dev/null; then
     echo -e "$output" | xsel --clipboard --input
     echo "✅ Copied ${#filtered_files[@]} files to clipboard using xsel."
+    echo -e "Included files:\n${filtered_files[@]}"
 else
     echo "❌ No clipboard utility found (pbcopy, xclip, or xsel)." >&2
     exit 1
