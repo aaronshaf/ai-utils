@@ -8,10 +8,10 @@
 #   Only includes files with extensions: .md, .json, .ts, .tsx, .js, .jsx
 #
 # Usage:
-#   copy_dir_contents_to_clipboard dir1 dir2 file1 ...
+#   copy_dir_contents_to_clipboard dir1 dir2 file1 *.json *.ts
 #
 # Example:
-#   copy_dir_contents_to_clipboard src tests package.json
+#   copy_dir_contents_to_clipboard src tests package.json *.json *.ts
 # -----------------------------
 
 # Ensure essential directories are in PATH
@@ -63,6 +63,9 @@ collect_files_find() {
         fi
     done
 }
+
+# Expand glob patterns in arguments before processing
+set -- $(print -l -- "$@")
 
 # Determine if we're inside a git repository
 if git rev-parse --is-inside-work-tree &>/dev/null; then
